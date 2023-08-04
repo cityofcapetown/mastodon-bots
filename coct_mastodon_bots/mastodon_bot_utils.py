@@ -10,3 +10,6 @@ def init_mastodon_client() -> Mastodon:
         access_token=os.environ["MASTODON_ACCESS_TOKEN"],
         api_base_url='https://botsin.space/'
     )
+
+
+TOOT_MAX_LENGTH = 500

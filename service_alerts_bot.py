@@ -3,12 +3,10 @@ import json
 import boto3
 import openai
 
-from coct_mastodon_bots.mastodon_bot_utils import init_mastodon_client
+from coct_mastodon_bots.mastodon_bot_utils import init_mastodon_client, TOOT_MAX_LENGTH
 
 SERVICE_ALERT_BUCKET = "coct-service-alerts-bot"
 SERVICE_ALERT_PREFIX = "alerts"
-
-TOOT_MAX_LENGTH = 500
 
 CHATGPT_TEMPLATE = """
 Please draft a toot about a potential City of Cape Town service outage in a concerned and helpful tone, 
@@ -80,23 +78,13 @@ def lambda_handler(event, context):
         for k in keys_to_delete:
             del service_alert[k]
 
-        service_alert_json = json.dumps(service_alert)
-
-        # Backing up source data to S3
-        s3.put_object(
-            Body=service_alert_json,
-            Bucket=SERVICE_ALERT_BUCKET,
-            Key=SERVICE_ALERT_PREFIX + "/" + service_alert_filename,
-            ContentType='application/json'
-        )
-
         # Forming content
         link_str = LINK_TEMPLATE.format(prefix_str=SERVICE_ALERT_PREFIX,
                                         service_alert_filename=service_alert_filename)
 
         # Trying to get text from ChatGPT
         try:
-            gpt_template = CHATGPT_TEMPLATE.format(json_str=service_alert_json,
+            gpt_template = CHATGPT_TEMPLATE.format(json_str=json.dumps(service_alert),
                                                    toot_length=TOOT_MAX_LENGTH - len(link_str))
             gpt_template += (
                 " . Encourage the use of the request_number value when contacting the City"
@@ -104,7 +92,15 @@ def lambda_handler(event, context):
             )
 
             message = _chatgpt_wrapper(gpt_template)
+
+            # Forming the final toot
+            toot = TOOT_TEMPLATE.format(answer_str=message,
+                                        link_str=link_str)
+
+            assert len(toot) <= TOOT_MAX_LENGTH, "toot is too long!"
+
         except Exception as e:
+            # bail out with a sensible error, so that this can be retried
             return {
                 'statusCode': 500,
                 'data': {
@@ -113,9 +109,16 @@ def lambda_handler(event, context):
                 }
             }
 
-        # Forming the final toot
-        toot = TOOT_TEMPLATE.format(answer_str=message,
-                                    link_str=link_str)
+        # Backing up source data and toot to S3
+        service_alert["toot"] = toot
+        service_alert_json = json.dumps(service_alert)
+
+        s3.put_object(
+            Body=service_alert_json,
+            Bucket=SERVICE_ALERT_BUCKET,
+            Key=SERVICE_ALERT_PREFIX + "/" + service_alert_filename,
+            ContentType='application/json'
+        )
 
         # All done, posting to Mastodon
         mastodon.status_post(toot)

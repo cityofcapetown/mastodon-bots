@@ -1,4 +1,4 @@
-from coct_mastodon_bots.mastodon_bot_utils import init_mastodon_client
+from coct_mastodon_bots.mastodon_bot_utils import init_mastodon_client, TOOT_MAX_LENGTH
 
 
 def lambda_handler(event, context):
@@ -7,7 +7,10 @@ def lambda_handler(event, context):
 
     mastodon = init_mastodon_client()
 
-    mastodon.status_post(sns_message)
+    if len(sns_message) < TOOT_MAX_LENGTH:
+        mastodon.status_post(sns_message)
+    else:
+        print("Toot not sent - too long!")
 
     return {
         'statusCode': 200,
