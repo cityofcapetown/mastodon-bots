@@ -42,7 +42,7 @@ def _chatgpt_wrapper(message):
                 messages=[
                     {"role": "user", "content": message},
                 ],
-                temperature=0.2,
+                temperature=0.4,
                 max_tokens=4097 - rough_token_count,
                 timeout=REQUEST_TIMEOUT
             )
